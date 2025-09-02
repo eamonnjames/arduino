@@ -1,0 +1,66 @@
+#include <ArduinoBLE.h>
+
+// BLE Service and Characteristic
+BLEService helloService("180C"); // Custom service UUID
+BLEStringCharacteristic helloCharacteristic("2A56", BLERead | BLENotify, 20); // Custom characteristic UUID
+
+// Button setup
+const int buttonPin = 2; // Change this to the pin your microswitch is connected to
+bool lastButtonState = HIGH; // Assume pull-up resistor
+bool messageSent = false;
+
+void setup() {
+  Serial.begin(9600);
+  while (!Serial);
+
+  pinMode(buttonPin, INPUT_PULLUP); // Use internal pull-up resistor
+
+  if (!BLE.begin()) {
+    Serial.println("BLE failed to start");
+    while (1);
+  }
+
+  BLE.setLocalName("Nano33IoT");
+  BLE.setAdvertisedService(helloService);
+
+  helloService.addCharacteristic(helloCharacteristic);
+  BLE.addService(helloService);
+
+  helloCharacteristic.writeValue("Ready");
+
+  BLE.advertise();
+  Serial.println("BLE device 'Nano33IoT' is now advertising and ready to pair");
+}
+
+void loop() {
+  BLEDevice central = BLE.central();
+
+  if (central) {
+    Serial.print("🔗 Paired with central device: ");
+    Serial.print(central.address());
+    Serial.print(" (Name: ");
+    Serial.print(central.localName());
+    Serial.println(")");
+
+    while (central.connected()) {
+      bool currentButtonState = digitalRead(buttonPin);
+
+      // Detect falling edge (button press)
+      if (lastButtonState == HIGH && currentButtonState == LOW) {
+        helloCharacteristic.writeValue("Fired");
+        Serial.println("🚨 Button pressed: Sent 'Fired'");
+        messageSent = true;
+      }
+
+      // Reset messageSent flag when button is released
+      if (currentButtonState == HIGH && messageSent) {
+        messageSent = false;
+      }
+
+      lastButtonState = currentButtonState;
+    }
+
+    Serial.print("❌ Disconnected from central device: ");
+    Serial.println(central.address());
+  }
+}
